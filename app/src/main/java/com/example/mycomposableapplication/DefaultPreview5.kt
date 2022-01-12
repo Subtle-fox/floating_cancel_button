@@ -36,8 +36,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
@@ -62,14 +60,13 @@ const val DISPOSE = 4
 fun DefaultPreviewY() {
     val anchor = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     var animationState by remember { mutableStateOf(INITIAL) }
-    var touch: Offset = Offset.Zero
+    var buttonTouchPosition by remember { mutableStateOf(Offset.Zero) }
 
     var buttonParams by remember {
         mutableStateOf(
             ButtonParamsY(
                 Offset.Zero,
                 IntSize(0, 0),
-                Offset.Zero,
             )
         )
     }
@@ -93,7 +90,7 @@ fun DefaultPreviewY() {
                     fillInParams.animateTo(initFillInParams, animationSpec = TweenSpec(700))
                 }
                 launch {
-                    anchor.animateTo(Offset.Zero.plus(buttonParams.touchOffset), animationSpec = TweenSpec(700))
+                    anchor.animateTo(buttonTouchPosition, animationSpec = TweenSpec(700))
                 }
             }
         }
@@ -105,7 +102,13 @@ fun DefaultPreviewY() {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.BottomEnd
     ) {
-        FillInRect(anchor, buttonParams, fillInParams, { buttonParamsX = it })
+        FillInRect(anchor, buttonParams, fillInParams, {
+            buttonParamsX = it
+
+            println("### buttonParamsX: ${buttonParamsX}")
+
+        }, buttonTouchPosition)
+
         CancelButtonY(
             buttonParams,
             anchor,
@@ -116,14 +119,14 @@ fun DefaultPreviewY() {
                     else -> DISPOSE
                 }
             },
-            { touch = it },
+            {
+                buttonTouchPosition = it
+            },
             {
                 buttonParams = it
 
-                println("### buttonParams: ${buttonParams}")
 
-
-                val pointer = buttonParams.parentOffset.plus(anchor.value).minus(touch)
+                val pointer = buttonParams.parentOffset.plus(anchor.value).minus(buttonTouchPosition)
                 val isHit = with(buttonParamsX) {
                     pointer.y > parentOffset.y && (pointer.x > parentOffset.x && pointer.x < parentOffset.x + size.width)
                 }
@@ -149,7 +152,6 @@ private data class ButtonParamsX(
 private data class ButtonParamsY(
     val parentOffset: Offset,
     val size: IntSize,
-    val touchOffset: Offset,
 )
 
 data class FillInParamsY(
@@ -179,9 +181,11 @@ private fun FillInRect(
     anchor: Animatable<Offset, AnimationVector2D>,
     params: ButtonParamsY,
     fillInParams: Animatable<FillInParams, AnimationVector3D>,
-
-    onParamsChanged: (ButtonParamsX) -> Unit
+    onParamsChanged: (ButtonParamsX) -> Unit,
+    touch: Offset
 ) {
+
+
     if (params.parentOffset != Offset.Zero && anchor.value != Offset.Zero) {
         ProvideTextStyle(
             value = MaterialTheme.typography.button
@@ -209,24 +213,20 @@ private fun FillInRect(
         ) {
             drawRect(Color(0, 0, 0, (0x1f * fillInParams.value.overlayAlpha).toInt()))
 
-            translate {
+            val topLeftBase = params.parentOffset.plus(anchor.value).minus(touch)
+            drawRoundRect(
+                Color.Red,
+                topLeft = topLeftBase.copy(
+                    x = topLeftBase.x - params.size.width * (fillInParams.value.scaleX - 1) / 2,
+                    y = topLeftBase.y - params.size.height * (fillInParams.value.scaleY - 1) / 2
+                ),
+                size = Size(
+                    params.size.width.toFloat() * fillInParams.value.scaleX,
+                    params.size.height.toFloat() * fillInParams.value.scaleY
+                ),
+                cornerRadius = CornerRadius(64.dp.toPx(), 64.dp.toPx())
+            )
 
-            }
-            scale(
-                fillInParams.value.scaleX,
-                fillInParams.value.scaleY,
-                pivot = Offset(
-                    params.parentOffset.x + params.size.width / 2,
-                    params.parentOffset.y + params.size.height / 2
-                )
-            ) {
-                drawRoundRect(
-                    Color.Red,
-                    topLeft = params.parentOffset.plus(anchor.value),
-                    size = Size(params.size.width.toFloat(), params.size.height.toFloat()),
-                    cornerRadius = CornerRadius(64.dp.toPx(), 64.dp.toPx())
-                )
-            }
             val sizePx = 14f.sp.toPx()
             val paint = Paint().apply {
                 textAlign = Paint.Align.CENTER
@@ -236,8 +236,8 @@ private fun FillInRect(
 
             drawContext.canvas.nativeCanvas.drawText(
                 "Android CCC".uppercase(),
-                params.parentOffset.plus(anchor.value).x + params.size.width / 2 - sizePx / 2 * 0,
-                params.parentOffset.plus(anchor.value).y + params.size.height / 2,
+                params.parentOffset.plus(anchor.value.minus(touch)).x + params.size.width / 2 - sizePx / 2 * 0,
+                params.parentOffset.plus(anchor.value.minus(touch)).y + params.size.height / 2,
 //                center.x,
 //                center.y,
                 paint
@@ -333,21 +333,22 @@ private fun CancelButtonY(
                                 println("### touchPosition ${touchPosition}")
 
                                 touch = touchPosition
-                                val newParams = buttonParams.copy(touchOffset = touchPosition)
+//                                val newParams = buttonParams.copy(touchOffset = touchPosition)
                                 launch {
-                                    anchor.snapTo(Offset.Zero.minus(touchPosition))
+                                    anchor.snapTo(touchPosition)
                                 }
-                                onParamsChanged.invoke(newParams)
+//                                onParamsChanged.invoke(newParams)
 
-//                                onTouch.invoke(it.position)
+                                onTouch.invoke(it.position)
                                 onPressed(true)
                             }
                         }
                         awaitPointerEventScope {
                             drag(pointer.id) { change ->
                                 launch {
-                                    println("### touch: ${touch}")
-                                    anchor.snapTo(change.position.minus(touch))
+                                    println("### ${buttonParams}")
+//                                    anchor.snapTo(change.position.plus(buttonParams.touchOffset))
+                                    anchor.snapTo(change.position)
                                 }
                             }
                         }
