@@ -45,11 +45,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -82,8 +82,13 @@ fun DefaultPreviewY() {
     val initFloatingParams = FloatingParams(1f, 1f, 0f)
     val floatingButtonParams = remember { Animatable(initFloatingParams, FloatingParamsConverter) }
 
+
+    val configuration = LocalConfiguration.current
+//    val screenWidth = configuration.screenWidthDp.dp.toPx()
+
+
     LaunchedEffect(cancellingState) {
-        println("### cancellingState: $cancellingState")
+//        println("### cancellingState: $cancellingState")
         when (cancellingState) {
             DRAG -> {
                 launch {
@@ -151,14 +156,13 @@ fun DefaultPreviewY() {
                     value = MaterialTheme.typography.button
                 ) {
                     Text(
-                        letterSpacing = 0.078.em,
                         color = Color.White,
                         text = "Stub".uppercase(),
                     )
                 }
             }
 
-            CancelButtonY(
+            StaticCancelButton(
                 cancelButtonParams,
                 anchor,
                 { isPressed ->
@@ -192,11 +196,32 @@ fun DefaultPreviewY() {
                     }
                 },
                 isCancelButtonVisible,
-                isCancelButtonDisposed
+                isCancelButtonDisposed,
+                { desiredOffset ->
+
+                    println("### drop area params: $dropAreaParams")
+
+                    val hitDelta = 32
+                    val pointer = cancelButtonParams.offset.plus(desiredOffset)
+                    val isHit = with(dropAreaParams) {
+                        pointer.y > offset.y - hitDelta
+                    }
+                    if (isHit) {
+                        Offset(
+                            x = (dropAreaParams.size.width - cancelButtonParams.size.width) / 2f,
+                            y = dropAreaParams.size.height / 2
+                                + cancelButtonParams.size.height
+                                + cancelButtonParams.offset.y
+                                + hitDelta
+                        ).minus(cancelButtonParams.offset).plus(buttonTouchPosition)
+                    } else {
+                        desiredOffset
+                    }
+                }
             )
         }
 
-        FillInRect(
+        FloatingCancelButton(
             anchor,
             cancelButtonParams,
             floatingButtonParams,
@@ -233,7 +258,7 @@ object FloatingParamsConverter : TwoWayConverter<FloatingParams, AnimationVector
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
-private fun FillInRect(
+private fun FloatingCancelButton(
     anchor: Animatable<Offset, AnimationVector2D>,
     params: ParentPositionParams,
     floatingParams: Animatable<FloatingParams, AnimationVector3D>,
@@ -241,11 +266,11 @@ private fun FillInRect(
     touch: Offset,
     text: String,
 ) {
-//    if (params.offset != Offset.Zero && anchor.value != Offset.Zero) {
     val topLeftBase = params.offset.plus(anchor.value).minus(touch)
+    println("### topLeftBase: $topLeftBase")
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val overlayAlpha = (0x4f * floatingParams.value.overlayAlpha).toInt()
+        val overlayAlpha = (0x9f * floatingParams.value.overlayAlpha).toInt()
         drawRect(Color(0xff, 0xff, 0xff, overlayAlpha))
     }
 
@@ -304,18 +329,19 @@ private fun FillInRect(
             paint
         )
     }
-//    }
 }
 
 @Composable
-private fun CancelButtonY(
+private fun StaticCancelButton(
     buttonParams: ParentPositionParams,
     anchor: Animatable<Offset, AnimationVector2D>,
     onPressed: (Boolean) -> Unit,
     onTouch: (Offset) -> Unit,
     onParamsChanged: (ParentPositionParams) -> Unit,
     isVisible: Boolean,
-    isDisposed: Boolean
+    isDisposed: Boolean,
+
+    dropAreaSnapper: (Offset) -> Offset
 ) {
     if (isDisposed) return
 
@@ -359,7 +385,12 @@ private fun CancelButtonY(
                             if (isVisible) {
                                 drag(pointer.id) { change ->
                                     launch {
-                                        anchor.snapTo(change.position)
+                                        val newPosition = dropAreaSnapper(change.position)
+                                        if (newPosition != change.position) {
+                                            anchor.animateTo(newPosition)
+                                        } else {
+                                            anchor.snapTo(newPosition)
+                                        }
                                     }
                                 }
                             }
