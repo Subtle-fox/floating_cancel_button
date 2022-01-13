@@ -1,6 +1,8 @@
 package com.example.mycomposableapplication
 
 import android.graphics.Paint
+import android.graphics.Typeface
+import android.os.Build
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector2D
@@ -43,9 +45,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -143,7 +147,15 @@ fun DefaultPreviewY() {
                         shape = CircleShape
                     ),
                 onClick = { }) {
-
+                ProvideTextStyle(
+                    value = MaterialTheme.typography.button
+                ) {
+                    Text(
+                        letterSpacing = 0.078.em,
+                        color = Color.White,
+                        text = "Stub".uppercase(),
+                    )
+                }
             }
 
             CancelButtonY(
@@ -169,7 +181,7 @@ fun DefaultPreviewY() {
                     }
                     if (cancellingState != DISPOSE) {
                         if (isHit) {
-                            if (cancellingState != FINAL) {
+                            if (cancellingState == DRAG) {
                                 cancellingState = FINAL
                             }
                         } else {
@@ -229,63 +241,70 @@ private fun FillInRect(
     touch: Offset,
     text: String,
 ) {
-    if (params.offset != Offset.Zero && anchor.value != Offset.Zero) {
-        val topLeftBase = params.offset.plus(anchor.value).minus(touch)
+//    if (params.offset != Offset.Zero && anchor.value != Offset.Zero) {
+    val topLeftBase = params.offset.plus(anchor.value).minus(touch)
 
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val overlayAlpha = (0x1f * floatingParams.value.overlayAlpha).toInt()
-            drawRect(Color(0xff, 0xff, 0xff, overlayAlpha))
-        }
-
-        ProvideTextStyle(value = MaterialTheme.typography.button) {
-            val textAlpha = (0xff * floatingParams.value.overlayAlpha).toInt()
-            val textColor = Color(0, 0, 0, textAlpha)
-            Text(
-                text = "Hold to cancel".uppercase(),
-                color = textColor,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 32.dp)
-                    .composed {
-                        onGloballyPositioned {
-                            onParamsChanged.invoke(
-                                ParentPositionParams(offset = it.positionInRoot(), size = it.size)
-                            )
-                        }
-                    }
-            )
-        }
-
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRoundRect(
-                color = Color.Red,
-                topLeft = topLeftBase.copy(
-                    x = topLeftBase.x - params.size.width * (floatingParams.value.scaleX - 1) / 2,
-                    y = topLeftBase.y - params.size.height * (floatingParams.value.scaleY - 1) / 2
-                ),
-                size = Size(
-                    width = params.size.width * floatingParams.value.scaleX,
-                    height = params.size.height * floatingParams.value.scaleY
-                ),
-                cornerRadius = CornerRadius(64.dp.toPx(), 64.dp.toPx())
-            )
-
-            val sizePx = 14f.sp.toPx()
-            val paint = Paint().apply {
-                textAlign = Paint.Align.CENTER
-                textSize = sizePx
-                color = Color.White.toArgb()
-            }
-
-            drawContext.canvas.nativeCanvas.drawText(
-                text,
-                topLeftBase.x + params.size.width / 2,
-                topLeftBase.y + params.size.height / 2 - (paint.descent() + paint.ascent()) / 2,
-                paint
-            )
-        }
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val overlayAlpha = (0x4f * floatingParams.value.overlayAlpha).toInt()
+        drawRect(Color(0xff, 0xff, 0xff, overlayAlpha))
     }
+
+    ProvideTextStyle(value = MaterialTheme.typography.button) {
+        val textAlpha = (0xff * floatingParams.value.overlayAlpha).toInt()
+        val textColor = Color(0, 0, 0, textAlpha)
+        Text(
+            text = "Hold to cancel".uppercase(),
+            color = textColor,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 32.dp)
+                .composed {
+                    onGloballyPositioned {
+                        onParamsChanged.invoke(
+                            ParentPositionParams(offset = it.positionInRoot(), size = it.size)
+                        )
+                    }
+                }
+        )
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        drawRoundRect(
+            color = Color.Red,
+            topLeft = topLeftBase.copy(
+                x = topLeftBase.x - params.size.width * (floatingParams.value.scaleX - 1) / 2,
+                y = topLeftBase.y - params.size.height * (floatingParams.value.scaleY - 1) / 2
+            ),
+            size = Size(
+                width = params.size.width * floatingParams.value.scaleX,
+                height = params.size.height * floatingParams.value.scaleY
+            ),
+            cornerRadius = CornerRadius(64.dp.toPx(), 64.dp.toPx())
+        )
+
+        val sizePx = 14f.sp.toPx()
+        val paint = Paint().apply {
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+            textSize = sizePx
+            typeface = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                Typeface.create(null, FontWeight.Medium.weight, false)
+            } else {
+                Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
+            }
+            letterSpacing = 0.078f
+            color = Color.White.toArgb()
+        }
+
+        drawContext.canvas.nativeCanvas.drawText(
+            text,
+            topLeftBase.x + params.size.width / 2,
+            topLeftBase.y + params.size.height / 2 - (paint.descent() + paint.ascent()) / 2,
+            paint
+        )
+    }
+//    }
 }
 
 @Composable
@@ -362,6 +381,7 @@ private fun CancelButtonY(
             value = MaterialTheme.typography.button
         ) {
             Text(
+//                letterSpacing = 0.078.em,
                 color = if (isVisible) Color.White else Color.Transparent,
                 text = "Cancel booking".uppercase(),
             )
