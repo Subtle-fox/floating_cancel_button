@@ -8,17 +8,18 @@ import androidx.compose.animation.core.AnimationVector3D
 import androidx.compose.animation.core.TweenSpec
 import androidx.compose.animation.core.TwoWayConverter
 import androidx.compose.animation.core.VectorConverter
-import androidx.compose.animation.core.animateValueAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.ProvideTextStyle
 import androidx.compose.material.Text
@@ -59,33 +60,30 @@ const val ANIMATION_DURATION_MS = 300
 @Composable
 fun DefaultPreviewY() {
     val anchor = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
-    var animationState by remember { mutableStateOf(INITIAL) }
+    var cancellingState by remember { mutableStateOf(INITIAL) }
     var buttonTouchPosition by remember { mutableStateOf(Offset.Zero) }
+    var isCancelButtonVisible by remember { mutableStateOf(true) }
+    var isCancelButtonDisposed by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf("Cancel booking") }
 
-    var text by remember {
-        mutableStateOf("Cancel booking")
+    var cancelButtonParams by remember {
+        mutableStateOf(ParentPositionParams(Offset.Zero, IntSize(0, 0)))
+    }
+    var dropAreaParams by remember {
+        mutableStateOf(ParentPositionParams(Offset.Zero, IntSize(0, 0)))
     }
 
-    var buttonParams by remember {
-        mutableStateOf(
-            ButtonParamsY(
-                Offset.Zero,
-                IntSize(0, 0),
-            )
-        )
-    }
+    val initFloatingParams = FloatingParams(1f, 1f, 0f)
+    val floatingButtonParams = remember { Animatable(initFloatingParams, FloatingParamsConverter) }
 
-    val initFillInParams = FillInParams(1f, 1f, 0f)
-    val fillInParams = remember { Animatable(initFillInParams, FillInConverter) }
-
-    LaunchedEffect(animationState) {
-        println("### animationState: ${animationState}")
-        when (animationState) {
+    LaunchedEffect(cancellingState) {
+        println("### cancellingState: $cancellingState")
+        when (cancellingState) {
             DRAG -> {
                 launch {
                     val scaleFactor = 1.2f
-                    fillInParams.animateTo(
-                        FillInParams(scaleFactor, scaleFactor, 1f),
+                    floatingButtonParams.animateTo(
+                        FloatingParams(scaleFactor, scaleFactor, 1f),
                         animationSpec = TweenSpec(ANIMATION_DURATION_MS)
                     )
                 }
@@ -94,8 +92,8 @@ fun DefaultPreviewY() {
 
             FINAL -> {
                 launch {
-                    fillInParams.animateTo(
-                        initFillInParams.copy(overlayAlpha = 1f),
+                    floatingButtonParams.animateTo(
+                        initFloatingParams.copy(overlayAlpha = 1f),
                         animationSpec = TweenSpec(ANIMATION_DURATION_MS)
                     )
                 }
@@ -104,26 +102,27 @@ fun DefaultPreviewY() {
 
             INITIAL -> {
                 launch {
-                    fillInParams.animateTo(initFillInParams, animationSpec = TweenSpec(ANIMATION_DURATION_MS))
+                    floatingButtonParams.animateTo(initFloatingParams, animationSpec = TweenSpec(ANIMATION_DURATION_MS))
                 }
                 launch {
                     anchor.animateTo(buttonTouchPosition, animationSpec = TweenSpec(ANIMATION_DURATION_MS))
+                    isCancelButtonVisible = true
                 }
                 text = "Cancel booking"
             }
 
             DISPOSE -> {
+                isCancelButtonDisposed = true
                 val scaleFactor = 30f
                 launch {
-                    fillInParams.animateTo(FillInParams(scaleFactor, scaleFactor, 1f), animationSpec = TweenSpec(700))
+                    floatingButtonParams.animateTo(
+                        FloatingParams(scaleFactor, scaleFactor, 1f),
+                        animationSpec = TweenSpec(700)
+                    )
                 }
                 text = "Canceling..."
             }
         }
-    }
-
-    var dropAreaParams by remember {
-        mutableStateOf(ButtonParamsY(Offset.Zero, IntSize(0, 0)))
     }
 
     Box(
@@ -131,46 +130,54 @@ fun DefaultPreviewY() {
         contentAlignment = Alignment.BottomEnd
     ) {
 
-        CancelButtonY(
-            buttonParams,
-            anchor,
-            { isPressed ->
-                animationState = if (isPressed) {
-                    DRAG
-                } else if (animationState == DRAG) {
-                    INITIAL
-                } else {
-                    DISPOSE
-                }
-            },
-            {
-                buttonTouchPosition = it
-            },
-            {
-                buttonParams = it
+        Row {
 
-                val pointer = buttonParams.parentOffset.plus(anchor.value)
-                val isHit = with(dropAreaParams) {
-                    pointer.y > parentOffset.y - 32
-                }
-                if (animationState != DISPOSE) {
-                    if (isHit) {
-                        if (animationState != FINAL) {
-                            animationState = FINAL
-                        }
-                    } else {
-                        if (animationState == FINAL) {
-                            animationState = DRAG
+            Button(onClick = { }) {
+
+            }
+
+            CancelButtonY(
+                cancelButtonParams,
+                anchor,
+                { isPressed ->
+                    cancellingState = when {
+                        isPressed -> DRAG
+                        cancellingState == DRAG -> INITIAL
+                        else -> DISPOSE
+                    }
+                    isCancelButtonVisible = false
+                },
+                {
+                    buttonTouchPosition = it
+                },
+                {
+                    cancelButtonParams = it
+
+                    val pointer = cancelButtonParams.offset.plus(anchor.value)
+                    val isHit = with(dropAreaParams) {
+                        pointer.y > offset.y - 32
+                    }
+                    if (cancellingState != DISPOSE) {
+                        if (isHit) {
+                            if (cancellingState != FINAL) {
+                                cancellingState = FINAL
+                            }
+                        } else {
+                            if (cancellingState == FINAL) {
+                                cancellingState = DRAG
+                            }
                         }
                     }
-                }
-            }
-        )
+                },
+                isCancelButtonVisible,
+                isCancelButtonDisposed
+            )
+        }
 
         FillInRect(
             anchor,
-            buttonParams,
-            fillInParams,
+            cancelButtonParams,
+            floatingButtonParams,
             { dropAreaParams = it },
             buttonTouchPosition,
             text.uppercase()
@@ -178,47 +185,55 @@ fun DefaultPreviewY() {
     }
 }
 
-private data class ButtonParamsY(
-    val parentOffset: Offset,
+private data class ParentPositionParams(
+    val offset: Offset,
     val size: IntSize,
 )
 
-@Composable
-fun ParamsAnimationY(targetSize: FillInParams): FillInParams {
-    val animSize: FillInParams by animateValueAsState(targetSize,
-        TwoWayConverter(
-            convertToVector = { params: FillInParams ->
-                AnimationVector3D(params.scaleX, params.scaleX, params.overlayAlpha)
-            },
-            convertFromVector = { vector: AnimationVector3D ->
-                FillInParams(scaleX = vector.v1, scaleY = vector.v2, overlayAlpha = vector.v3)
-            }
-        )
-    )
-    return animSize
+data class FloatingParams(
+    val scaleX: Float,
+    val scaleY: Float,
+    val overlayAlpha: Float
+)
+
+object FloatingParamsConverter : TwoWayConverter<FloatingParams, AnimationVector3D> {
+    override val convertFromVector: (AnimationVector3D) -> FloatingParams
+        get() = { vector: AnimationVector3D ->
+            FloatingParams(scaleX = vector.v1, scaleY = vector.v2, overlayAlpha = vector.v3)
+        }
+
+    override val convertToVector: (FloatingParams) -> AnimationVector3D
+        get() = { params: FloatingParams ->
+            AnimationVector3D(params.scaleX, params.scaleY, params.overlayAlpha)
+        }
 }
+
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 private fun FillInRect(
     anchor: Animatable<Offset, AnimationVector2D>,
-    params: ButtonParamsY,
-    fillInParams: Animatable<FillInParams, AnimationVector3D>,
-    onParamsChanged: (ButtonParamsY) -> Unit,
+    params: ParentPositionParams,
+    floatingParams: Animatable<FloatingParams, AnimationVector3D>,
+    onParamsChanged: (ParentPositionParams) -> Unit,
     touch: Offset,
     text: String,
 ) {
 
+    if (params.offset != Offset.Zero && anchor.value != Offset.Zero) {
+        val topLeftBase = params.offset.plus(anchor.value).minus(touch)
 
-    if (params.parentOffset != Offset.Zero && anchor.value != Offset.Zero) {
-        val topLeftBase = params.parentOffset.plus(anchor.value).minus(touch)
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val overlayAlpha = (0x1f * floatingParams.value.overlayAlpha).toInt()
+            drawRect(Color(0xff, 0xff, 0xff, overlayAlpha))
+        }
 
-        ProvideTextStyle(
-            value = MaterialTheme.typography.button
-        ) {
+        ProvideTextStyle(value = MaterialTheme.typography.button) {
+            val textAlpha = (0xff * floatingParams.value.overlayAlpha).toInt()
+            val textColor = Color(0, 0, 0, textAlpha)
             Text(
                 text = "Hold to cancel".uppercase(),
-                color = Color(0, 0, 0, (fillInParams.value.overlayAlpha * 4 * 0x1f).toInt()),
+                color = textColor,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -226,29 +241,23 @@ private fun FillInRect(
                     .composed {
                         onGloballyPositioned {
                             onParamsChanged.invoke(
-                                ButtonParamsY(parentOffset = it.positionInRoot(), size = it.size)
+                                ParentPositionParams(offset = it.positionInRoot(), size = it.size)
                             )
                         }
                     }
             )
         }
 
-        Canvas(
-            modifier = Modifier.fillMaxSize()
-
-        ) {
-            drawRect(Color(0, 0, 0, (0x1f * fillInParams.value.overlayAlpha).toInt()))
-
-
+        Canvas(modifier = Modifier.fillMaxSize()) {
             drawRoundRect(
-                Color.Red,
+                color = Color.Red,
                 topLeft = topLeftBase.copy(
-                    x = topLeftBase.x - params.size.width * (fillInParams.value.scaleX - 1) / 2,
-                    y = topLeftBase.y - params.size.height * (fillInParams.value.scaleY - 1) / 2
+                    x = topLeftBase.x - params.size.width * (floatingParams.value.scaleX - 1) / 2,
+                    y = topLeftBase.y - params.size.height * (floatingParams.value.scaleY - 1) / 2
                 ),
                 size = Size(
-                    params.size.width.toFloat() * fillInParams.value.scaleX,
-                    params.size.height.toFloat() * fillInParams.value.scaleY
+                    width = params.size.width * floatingParams.value.scaleX,
+                    height = params.size.height * floatingParams.value.scaleY
                 ),
                 cornerRadius = CornerRadius(64.dp.toPx(), 64.dp.toPx())
             )
@@ -257,12 +266,12 @@ private fun FillInRect(
             val paint = Paint().apply {
                 textAlign = Paint.Align.CENTER
                 textSize = sizePx
-                color = Color(0xFFFFFFFF).toArgb()
+                color = Color.White.toArgb()
             }
 
             drawContext.canvas.nativeCanvas.drawText(
                 text,
-                topLeftBase.x + params.size.width / 2 - sizePx / 2 * 0,
+                topLeftBase.x + params.size.width / 2,
                 topLeftBase.y + params.size.height / 2 - (paint.descent() + paint.ascent()) / 2,
                 paint
             )
@@ -272,12 +281,17 @@ private fun FillInRect(
 
 @Composable
 private fun CancelButtonY(
-    buttonParams: ButtonParamsY,
+    buttonParams: ParentPositionParams,
     anchor: Animatable<Offset, AnimationVector2D>,
     onPressed: (Boolean) -> Unit,
     onTouch: (Offset) -> Unit,
-    onParamsChanged: (ButtonParamsY) -> Unit,
+    onParamsChanged: (ParentPositionParams) -> Unit,
+    isVisible: Boolean,
+    isDisposed: Boolean
 ) {
+
+    if (isDisposed) return
+
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
@@ -285,14 +299,17 @@ private fun CancelButtonY(
                 horizontal = 48.dp,
                 vertical = 100.dp
             )
-            .background(
-                color = Color.Red,
-                shape = RoundedCornerShape(64.dp)
-            )
             .composed {
-                onGloballyPositioned {
+                if (isVisible) {
+                    background(
+                        color = Color.Red,
+                        shape = RoundedCornerShape(64.dp)
+                    )
+                } else {
+                    this
+                }.onGloballyPositioned {
                     onParamsChanged.invoke(
-                        buttonParams.copy(parentOffset = it.positionInRoot(), size = it.size)
+                        buttonParams.copy(offset = it.positionInRoot(), size = it.size)
                     )
                 }
             }
@@ -302,21 +319,27 @@ private fun CancelButtonY(
                         val pointer = awaitPointerEventScope {
                             awaitFirstDown().also {
                                 val touchPosition = it.position
-                                launch {
-                                    anchor.snapTo(touchPosition)
+                                if (isVisible) {
+                                    launch {
+                                        anchor.snapTo(touchPosition)
+                                    }
+                                    onTouch.invoke(it.position)
+                                    onPressed(true)
                                 }
-                                onTouch.invoke(it.position)
-                                onPressed(true)
                             }
                         }
                         awaitPointerEventScope {
-                            drag(pointer.id) { change ->
-                                launch {
-                                    anchor.snapTo(change.position)
+                            if (isVisible) {
+                                drag(pointer.id) { change ->
+                                    launch {
+                                        anchor.snapTo(change.position)
+                                    }
                                 }
                             }
                         }
-                        onPressed(false)
+                        if (isVisible) {
+                            onPressed(false)
+                        }
                     }
                 }
             }
@@ -331,7 +354,7 @@ private fun CancelButtonY(
             value = MaterialTheme.typography.button
         ) {
             Text(
-                color = Color.White,
+                color = if (isVisible) Color.White else Color.Transparent,
                 text = "Cancel booking".uppercase(),
             )
         }
