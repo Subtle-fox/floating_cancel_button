@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.MaterialTheme
@@ -39,7 +38,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.style.TextAlign
@@ -55,12 +53,18 @@ const val DRAG = 2
 const val FINAL = 3
 const val DISPOSE = 4
 
+const val ANIMATION_DURATION_MS = 300
+
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun DefaultPreviewY() {
     val anchor = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     var animationState by remember { mutableStateOf(INITIAL) }
     var buttonTouchPosition by remember { mutableStateOf(Offset.Zero) }
+
+    var text by remember {
+        mutableStateOf("Cancel booking")
+    }
 
     var buttonParams by remember {
         mutableStateOf(
@@ -75,48 +79,68 @@ fun DefaultPreviewY() {
     val fillInParams = remember { Animatable(initFillInParams, FillInConverter) }
 
     LaunchedEffect(animationState) {
+        println("### animationState: ${animationState}")
         when (animationState) {
             DRAG -> {
-                val scaleFactor = 1.2f
-                fillInParams.animateTo(FillInParams(scaleFactor, scaleFactor, 1f), animationSpec = TweenSpec(700))
+                launch {
+                    val scaleFactor = 1.2f
+                    fillInParams.animateTo(
+                        FillInParams(scaleFactor, scaleFactor, 1f),
+                        animationSpec = TweenSpec(ANIMATION_DURATION_MS)
+                    )
+                }
+                text = "Cancel booking"
             }
 
             FINAL -> {
-                fillInParams.animateTo(initFillInParams, animationSpec = TweenSpec(700))
+                launch {
+                    fillInParams.animateTo(
+                        initFillInParams.copy(overlayAlpha = 1f),
+                        animationSpec = TweenSpec(ANIMATION_DURATION_MS)
+                    )
+                }
+                text = "Drop to cancel"
             }
 
             INITIAL -> {
                 launch {
-                    fillInParams.animateTo(initFillInParams, animationSpec = TweenSpec(700))
+                    fillInParams.animateTo(initFillInParams, animationSpec = TweenSpec(ANIMATION_DURATION_MS))
                 }
                 launch {
-                    anchor.animateTo(buttonTouchPosition, animationSpec = TweenSpec(700))
+                    anchor.animateTo(buttonTouchPosition, animationSpec = TweenSpec(ANIMATION_DURATION_MS))
                 }
+                text = "Cancel booking"
+            }
+
+            DISPOSE -> {
+                val scaleFactor = 30f
+                launch {
+                    fillInParams.animateTo(FillInParams(scaleFactor, scaleFactor, 1f), animationSpec = TweenSpec(700))
+                }
+                text = "Canceling..."
             }
         }
     }
 
-    var buttonParamsX = ButtonParamsX(Offset.Zero, IntSize(0, 0))
+    var dropAreaParams by remember {
+        mutableStateOf(ButtonParamsY(Offset.Zero, IntSize(0, 0)))
+    }
 
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.BottomEnd
     ) {
-        FillInRect(anchor, buttonParams, fillInParams, {
-            buttonParamsX = it
-
-            println("### buttonParamsX: ${buttonParamsX}")
-
-        }, buttonTouchPosition)
 
         CancelButtonY(
             buttonParams,
             anchor,
             { isPressed ->
-                animationState = when {
-                    isPressed -> DRAG
-                    animationState == DRAG -> INITIAL
-                    else -> DISPOSE
+                animationState = if (isPressed) {
+                    DRAG
+                } else if (animationState == DRAG) {
+                    INITIAL
+                } else {
+                    DISPOSE
                 }
             },
             {
@@ -125,39 +149,38 @@ fun DefaultPreviewY() {
             {
                 buttonParams = it
 
-
-                val pointer = buttonParams.parentOffset.plus(anchor.value).minus(buttonTouchPosition)
-                val isHit = with(buttonParamsX) {
-                    pointer.y > parentOffset.y && (pointer.x > parentOffset.x && pointer.x < parentOffset.x + size.width)
+                val pointer = buttonParams.parentOffset.plus(anchor.value)
+                val isHit = with(dropAreaParams) {
+                    pointer.y > parentOffset.y - 32
                 }
-                if (isHit) {
-                    if (animationState != FINAL) {
-                        animationState = FINAL
-                    }
-                } else {
-                    if (animationState == FINAL) {
-                        animationState = DRAG
+                if (animationState != DISPOSE) {
+                    if (isHit) {
+                        if (animationState != FINAL) {
+                            animationState = FINAL
+                        }
+                    } else {
+                        if (animationState == FINAL) {
+                            animationState = DRAG
+                        }
                     }
                 }
             }
         )
+
+        FillInRect(
+            anchor,
+            buttonParams,
+            fillInParams,
+            { dropAreaParams = it },
+            buttonTouchPosition,
+            text.uppercase()
+        )
     }
 }
-
-private data class ButtonParamsX(
-    val parentOffset: Offset,
-    val size: IntSize,
-)
 
 private data class ButtonParamsY(
     val parentOffset: Offset,
     val size: IntSize,
-)
-
-data class FillInParamsY(
-    val scaleX: Float,
-    val scaleY: Float,
-    val overlayAlpha: Float
 )
 
 @Composable
@@ -181,12 +204,15 @@ private fun FillInRect(
     anchor: Animatable<Offset, AnimationVector2D>,
     params: ButtonParamsY,
     fillInParams: Animatable<FillInParams, AnimationVector3D>,
-    onParamsChanged: (ButtonParamsX) -> Unit,
-    touch: Offset
+    onParamsChanged: (ButtonParamsY) -> Unit,
+    touch: Offset,
+    text: String,
 ) {
 
 
     if (params.parentOffset != Offset.Zero && anchor.value != Offset.Zero) {
+        val topLeftBase = params.parentOffset.plus(anchor.value).minus(touch)
+
         ProvideTextStyle(
             value = MaterialTheme.typography.button
         ) {
@@ -196,11 +222,11 @@ private fun FillInRect(
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 32.dp)
+                    .padding(vertical = 32.dp)
                     .composed {
                         onGloballyPositioned {
                             onParamsChanged.invoke(
-                                ButtonParamsX(parentOffset = it.positionInRoot(), size = it.size)
+                                ButtonParamsY(parentOffset = it.positionInRoot(), size = it.size)
                             )
                         }
                     }
@@ -213,7 +239,7 @@ private fun FillInRect(
         ) {
             drawRect(Color(0, 0, 0, (0x1f * fillInParams.value.overlayAlpha).toInt()))
 
-            val topLeftBase = params.parentOffset.plus(anchor.value).minus(touch)
+
             drawRoundRect(
                 Color.Red,
                 topLeft = topLeftBase.copy(
@@ -231,66 +257,16 @@ private fun FillInRect(
             val paint = Paint().apply {
                 textAlign = Paint.Align.CENTER
                 textSize = sizePx
-                color = Color(0xFF0018A8).toArgb()
+                color = Color(0xFFFFFFFF).toArgb()
             }
 
             drawContext.canvas.nativeCanvas.drawText(
-                "Android CCC".uppercase(),
-                params.parentOffset.plus(anchor.value.minus(touch)).x + params.size.width / 2 - sizePx / 2 * 0,
-                params.parentOffset.plus(anchor.value.minus(touch)).y + params.size.height / 2,
-//                center.x,
-//                center.y,
+                text,
+                topLeftBase.x + params.size.width / 2 - sizePx / 2 * 0,
+                topLeftBase.y + params.size.height / 2 - (paint.descent() + paint.ascent()) / 2,
                 paint
             )
         }
-
-        if (false) {
-            val xxx = params.parentOffset.plus(anchor.value)
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .layout { measurable, constraints ->
-                        val placeable = measurable.measure(constraints)
-                        val height = params.size.height
-                        layout(params.size.width, height) {
-                            placeable.placeRelative(
-                                xxx.x.toInt() - constraints.maxWidth + params.size.width,
-                                xxx.y.toInt() - constraints.maxHeight + params.size.height
-                            )
-                        }
-                    }
-
-            ) {
-
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .background(
-                            color = Color.Red,
-                            shape = RoundedCornerShape(64.dp)
-                        )
-                        .padding(
-                            PaddingValues(
-                                horizontal = 24.dp,
-                                vertical = 16.dp
-                            )
-                        )
-//                    .size(
-//                        params.size.width.dp,
-//                        params.size.height.dp,
-//                    )
-                ) {
-                    ProvideTextStyle(value = MaterialTheme.typography.button) {
-                        Text(
-                            color = Color.Black,
-                            text = "Canceling...".uppercase(),
-                            textAlign = TextAlign.End
-                        )
-                    }
-                }
-            }
-        }
-
     }
 }
 
@@ -300,17 +276,13 @@ private fun CancelButtonY(
     anchor: Animatable<Offset, AnimationVector2D>,
     onPressed: (Boolean) -> Unit,
     onTouch: (Offset) -> Unit,
-//    onDragChange: (Offset) -> Unit,
     onParamsChanged: (ButtonParamsY) -> Unit,
 ) {
-    var touch = Offset.Zero
-
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .offset(x = (-48).dp)
             .padding(
-//                horizontal = 48.dp,
+                horizontal = 48.dp,
                 vertical = 100.dp
             )
             .background(
@@ -330,15 +302,9 @@ private fun CancelButtonY(
                         val pointer = awaitPointerEventScope {
                             awaitFirstDown().also {
                                 val touchPosition = it.position
-                                println("### touchPosition ${touchPosition}")
-
-                                touch = touchPosition
-//                                val newParams = buttonParams.copy(touchOffset = touchPosition)
                                 launch {
                                     anchor.snapTo(touchPosition)
                                 }
-//                                onParamsChanged.invoke(newParams)
-
                                 onTouch.invoke(it.position)
                                 onPressed(true)
                             }
@@ -346,8 +312,6 @@ private fun CancelButtonY(
                         awaitPointerEventScope {
                             drag(pointer.id) { change ->
                                 launch {
-                                    println("### ${buttonParams}")
-//                                    anchor.snapTo(change.position.plus(buttonParams.touchOffset))
                                     anchor.snapTo(change.position)
                                 }
                             }
