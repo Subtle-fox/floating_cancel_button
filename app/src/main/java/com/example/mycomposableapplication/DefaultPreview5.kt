@@ -48,6 +48,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -66,6 +67,9 @@ const val ANIMATION_DURATION_MS = 300
 @Composable
 fun DefaultPreviewY() {
     val anchor = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val textOffset = remember { Animatable(DpOffset.Zero, DpOffset.VectorConverter) }
+
+
     var cancellingState by remember { mutableStateOf(INITIAL) }
     var buttonTouchPosition by remember { mutableStateOf(Offset.Zero) }
     var isCancelButtonVisible by remember { mutableStateOf(true) }
@@ -84,7 +88,7 @@ fun DefaultPreviewY() {
 
 
     val configuration = LocalConfiguration.current
-//    val screenWidth = configuration.screenWidthDp.dp.toPx()
+    val screenHeight = configuration.screenHeightDp.dp
 
 
     LaunchedEffect(cancellingState) {
@@ -131,6 +135,11 @@ fun DefaultPreviewY() {
                     )
                     isCancelButtonDisposed = true
                 }
+
+                launch {
+                    textOffset.animateTo(DpOffset(0.dp, screenHeight / 2 - 50.dp),  animationSpec = TweenSpec(ANIMATION_DURATION_MS * 2))
+                }
+
                 text = "Canceling..."
             }
         }
@@ -227,7 +236,8 @@ fun DefaultPreviewY() {
             floatingButtonParams,
             { dropAreaParams = it },
             buttonTouchPosition,
-            text.uppercase()
+            text.uppercase(),
+            textOffset
         )
     }
 }
@@ -265,9 +275,12 @@ private fun FloatingCancelButton(
     onParamsChanged: (ParentPositionParams) -> Unit,
     touch: Offset,
     text: String,
+    textOffset: Animatable<DpOffset, AnimationVector2D>,
 ) {
+
+    println("#### textOffset: ${textOffset.value.y}")
+
     val topLeftBase = params.offset.plus(anchor.value).minus(touch)
-    println("### topLeftBase: $topLeftBase")
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         val overlayAlpha = (0x9f * floatingParams.value.overlayAlpha).toInt()
@@ -325,7 +338,7 @@ private fun FloatingCancelButton(
         drawContext.canvas.nativeCanvas.drawText(
             text,
             topLeftBase.x + params.size.width / 2,
-            topLeftBase.y + params.size.height / 2 - (paint.descent() + paint.ascent()) / 2,
+            topLeftBase.y + params.size.height / 2 - (paint.descent() + paint.ascent()) / 2 - textOffset.value.y.toPx(),
             paint
         )
     }
