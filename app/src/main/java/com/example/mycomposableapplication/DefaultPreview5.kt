@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Button
 import androidx.compose.material.MaterialTheme
@@ -112,13 +114,13 @@ fun DefaultPreviewY() {
             }
 
             DISPOSE -> {
-                isCancelButtonDisposed = true
                 val scaleFactor = 30f
                 launch {
                     floatingButtonParams.animateTo(
                         FloatingParams(scaleFactor, scaleFactor, 1f),
                         animationSpec = TweenSpec(700)
                     )
+                    isCancelButtonDisposed = true
                 }
                 text = "Canceling..."
             }
@@ -131,8 +133,16 @@ fun DefaultPreviewY() {
     ) {
 
         Row {
-
-            Button(onClick = { }) {
+            Button(
+                shape = RoundedCornerShape(64.dp),
+                modifier = Modifier
+                    .padding(vertical = 100.dp)
+                    .size(80.dp, 48.dp)
+                    .background(
+                        color = Color.Black,
+                        shape = CircleShape
+                    ),
+                onClick = { }) {
 
             }
 
@@ -219,7 +229,6 @@ private fun FillInRect(
     touch: Offset,
     text: String,
 ) {
-
     if (params.offset != Offset.Zero && anchor.value != Offset.Zero) {
         val topLeftBase = params.offset.plus(anchor.value).minus(touch)
 
@@ -289,7 +298,6 @@ private fun CancelButtonY(
     isVisible: Boolean,
     isDisposed: Boolean
 ) {
-
     if (isDisposed) return
 
     Box(
