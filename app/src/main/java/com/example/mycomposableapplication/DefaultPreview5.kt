@@ -63,12 +63,15 @@ const val DISPOSE = 4
 
 const val ANIMATION_DURATION_MS = 300
 
+val cancelCallback: () -> Unit = {
+    println("### start cancel request")
+}
+
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun DefaultPreviewY() {
     val anchor = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     val textOffset = remember { Animatable(DpOffset.Zero, DpOffset.VectorConverter) }
-
 
     var cancellingState by remember { mutableStateOf(INITIAL) }
     var buttonTouchPosition by remember { mutableStateOf(Offset.Zero) }
@@ -86,10 +89,7 @@ fun DefaultPreviewY() {
     val initFloatingParams = FloatingParams(1f, 1f, 0f)
     val floatingButtonParams = remember { Animatable(initFloatingParams, FloatingParamsConverter) }
 
-
-    val configuration = LocalConfiguration.current
-    val screenHeight = configuration.screenHeightDp.dp
-
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
 
     LaunchedEffect(cancellingState) {
 //        println("### cancellingState: $cancellingState")
@@ -137,7 +137,14 @@ fun DefaultPreviewY() {
                 }
 
                 launch {
-                    textOffset.animateTo(DpOffset(0.dp, screenHeight / 2 - 50.dp),  animationSpec = TweenSpec(ANIMATION_DURATION_MS * 2))
+                    textOffset.animateTo(
+                        DpOffset(0.dp, screenHeight / 2 - 50.dp),
+                        animationSpec = TweenSpec(ANIMATION_DURATION_MS * 2)
+                    )
+                }
+
+                launch {
+                    cancelCallback.invoke()
                 }
 
                 text = "Canceling..."
@@ -277,9 +284,6 @@ private fun FloatingCancelButton(
     text: String,
     textOffset: Animatable<DpOffset, AnimationVector2D>,
 ) {
-
-    println("#### textOffset: ${textOffset.value.y}")
-
     val topLeftBase = params.offset.plus(anchor.value).minus(touch)
 
     Canvas(modifier = Modifier.fillMaxSize()) {
